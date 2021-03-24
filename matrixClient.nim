@@ -1,14 +1,4 @@
-# POST /_matrix/client/r0/login HTTP/1.1
-# Content-Type: application/json
-
-
 import httpclient, json, strformat, uri, strutils, oids, tables
-
-import credentials # For testing (not in git)
-
-const BASE = "https://matrix.code0.xyz"
-
-func b(api: string): string = BASE & api
 
 type Matrix = ref object
   http: HttpClient
@@ -40,12 +30,10 @@ proc req(matrix: Matrix, httpMethod: HttpMethod, api, body: string | JsonNode ):
   # echo result.status
   # echo result.body
 
-func identifiertToUsername(str: string): string =
+func identifiertToUsername*(str: string): string =
   ## @sn0re:matrix.code0.xyz --> sn0re
   if str.startsWith("@"):
     return str[1 .. ^1].split(":", 1)[0]
-
-assert identifiertToUsername("@sn0re:matrix.code0.xyz") == "sn0re"
 
 proc newMatrix*(server: string): Matrix =
   result = Matrix()
@@ -107,11 +95,11 @@ proc roomSend*(matrix: Matrix, roomId: string, messageType: string, content: Jso
     fmt"/_matrix/client/r0/rooms/{roomId.encodeUrl()}/send/m.room.message/{randomId()}", $content)
   return resp.body.parseJson()
 
-##########################
-# Some debugging procs
-##########################
+##############################################################################
+# Some (dummy) debugging procs, will be removed later
+##############################################################################
 import sets
-proc formatMsg(event: JsonNode) =
+proc formatMsg*(event: JsonNode) =
   if event["type"].getStr() == "m.room.message":
     let sender = event["sender"].getStr().identifiertToUsername()
     let time = event["origin_server_ts"].getStr()
@@ -120,7 +108,7 @@ proc formatMsg(event: JsonNode) =
   else:
     echo event
 
-proc dummyMsgList(js: JsonNode, processed: var HashSet[string]) =
+proc dummyMsgList*(js: JsonNode, processed: var HashSet[string]) =
   # "rooms": {
   #   "join": {
   #     "!ZPFhGDZNKYsRPjkUmj:matrix.code0.xyz": {
@@ -132,76 +120,8 @@ proc dummyMsgList(js: JsonNode, processed: var HashSet[string]) =
     processed.incl eventId
     formatMsg(event)
 
-
 when isMainModule:
-  import os
-  var matrix = newMatrix("https://matrix.code0.xyz")
-  # echo matrix.logout()
-  # echo matrix.whoami()
-  echo matrix.login(USERNAME, PASSWORD)
-  echo matrix.whoami()
-  echo matrix.joinedRooms()
-  echo matrix.joinRoomIdOrAlias("#testroom:matrix.code0.xyz")
-  echo matrix.joinRoomIdOrAlias("!JyrqzRzscGrjGVHkil:matrix.code0.xyz") # directchat with sn0re
-  echo matrix.roomSend("!JyrqzRzscGrjGVHkil:matrix.code0.xyz", "m.room.notice", %* {
-    "msgtype": "m.text",
-    "body":  "hi sn0re"
-  })
-
-  echo matrix.joinedRooms()
-
-  var processed: HashSet[string]
-  matrix.sync().dummyMsgList(processed) #.pretty()
-
-  let roomAlias = "#testroom:matrix.code0.xyz"
-  echo matrix.roomResolve(roomAlias)
-  let roomId = matrix.roomResolve(roomAlias)["room_id"].getStr()
-
-  # matrix.roomSend("#testroom:matrix.code0.xyz", "m.room.message", {
-  #   "msgtype": "m.text",
-  #   "body": "Test"
-  # })
-  # echo matrix.roomSend(roomId, "m.room.message", %* {
-  #   "msgtype": "m.text",
-  #   "body": "Test"
-  # })
-  # echo matrix.roomSend("!ZPFhGDZNKYsRPjkUmj:matrix.code0.xyz", "m.room.message", %* {
-  #   "msgtype": "m.text",
-  #   "body": "Test2"
-  # })
-
-  while true:
-    # discard stdin.readLine()
-    # echo matrix.sync().pretty()
-    echo "."
-    for event in matrix.events()["chunk"].getElems(): #.dummyMsgList(processed) #.pretty()
-      formatMsg(event)
-
-      if event["type"].getStr() == "m.room.message":
-        let sender = event["sender"].getStr().identifiertToUsername()
-        let time = event["origin_server_ts"].getStr()
-        let body = event["content"]["body"].getStr().strip()
-        if body.startsWith("!"):
-          echo "BODY FOR ME!!"
-          if body == "!help":
-            echo matrix.roomSend(roomId, "m.room.notice", %* {
-              "msgtype": "m.text",
-              "body":  "ich kann noch nix :D"
-            })
-          else:
-            echo matrix.roomSend(roomId, "m.room.notice", %* {
-              "msgtype": "m.text",
-              "body":  "was willst du von mir???\nIch versteh: '" & body & "' net!"
-            })
-    # sleep(5000)
-  echo matrix.logout()
-
-
-
-
-
-
-
-# let response = client.request(b"/_matrix/client/r0/login", httpMethod = HttpPost, body = $body)
-# echo response.status
-# echo response.body
+  import unittest
+  suite "matrix":
+    test "ident converter":
+      check identifiertToUsername("@sn0re:matrix.code0.xyz") == "sn0re"

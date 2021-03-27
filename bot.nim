@@ -6,9 +6,9 @@ from credentials import USERNAME, PASSWORD # For testing (not in git)
 when isMainModule:
   import os
   var matrix = newMatrix("https://matrix.code0.xyz")
-  # echo matrix.logout()
-  # echo matrix.whoami()
-  echo matrix.login(USERNAME, PASSWORD)
+  if not matrix.isLogin(USERNAME, PASSWORD):
+    echo "Bot cannot log in. Abort."
+    quit()
   echo matrix.whoami()
   echo matrix.joinedRooms()
   echo matrix.joinRoomIdOrAlias("#testroom:matrix.code0.xyz")
@@ -21,30 +21,15 @@ when isMainModule:
   echo matrix.joinedRooms()
 
   var processed: HashSet[string]
-  matrix.sync().dummyMsgList(processed) #.pretty()
+  matrix.sync().dummyMsgList(processed)
 
   let roomAlias = "#testroom:matrix.code0.xyz"
   echo matrix.roomResolve(roomAlias)
-  let roomId = matrix.roomResolve(roomAlias)["room_id"].getStr()
-
-  # matrix.roomSend("#testroom:matrix.code0.xyz", "m.room.message", {
-  #   "msgtype": "m.text",
-  #   "body": "Test"
-  # })
-  # echo matrix.roomSend(roomId, "m.room.message", %* {
-  #   "msgtype": "m.text",
-  #   "body": "Test"
-  # })
-  # echo matrix.roomSend("!ZPFhGDZNKYsRPjkUmj:matrix.code0.xyz", "m.room.message", %* {
-  #   "msgtype": "m.text",
-  #   "body": "Test2"
-  # })
+  let roomId = matrix.roomResolve(roomAlias).room_id
 
   while true:
-    # discard stdin.readLine()
-    # echo matrix.sync().pretty()
     echo "."
-    for event in matrix.events()["chunk"].getElems(): #.dummyMsgList(processed) #.pretty()
+    for event in matrix.events()["chunk"].getElems():
       formatMsg(event)
 
       if event["type"].getStr() == "m.room.message":
@@ -63,9 +48,4 @@ when isMainModule:
               "msgtype": "m.text",
               "body":  "was willst du von mir???\nIch versteh: '" & body & "' net!"
             })
-    # sleep(5000)
   echo matrix.logout()
-
-# let response = client.request(b"/_matrix/client/r0/login", httpMethod = HttpPost, body = $body)
-# echo response.status
-# echo response.body

@@ -30,6 +30,9 @@ when isMainModule:
   let contentUri = matrix.uploadFile("testfile.txt", "CONTENT", "text/plain")
   echo contentUri.toDownloadUri()
 
+  let testimage = matrix.uploadFile("testdata/testimage.png")
+  echo testimage.toDownloadUri()
+  echo matrix.roomSendImage(roomId, testimage.content_uri, "testimage.png")
 
   while true:
     echo "."

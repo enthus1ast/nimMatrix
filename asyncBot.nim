@@ -26,6 +26,13 @@ proc main() {.async.} =
   echo (await matrix.roomResolve(roomAlias))
   let roomId = (await matrix.roomResolve(roomAlias)).room_id
 
+  let contentUri = await matrix.uploadFile("testfile.txt", "CONTENT", "text/plain")
+  echo contentUri.toDownloadUri()
+
+  let testimage = await matrix.uploadFile("testdata/testimage.png")
+  echo testimage.toDownloadUri()
+  echo await matrix.roomSendImage(roomId, testimage.content_uri, "testimage.png")
+
   while true:
     for event in (await matrix.events())["chunk"].getElems():
       formatMsg(event)

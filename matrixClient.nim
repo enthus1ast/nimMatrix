@@ -1,4 +1,5 @@
-import httpclient, json, strformat, uri, strutils, oids, tables, asyncdispatch, mimetypes, os, asyncfile
+import httpclient, json, strformat, uri, strutils,
+  oids, tables, asyncdispatch, mimetypes, os, asyncfile
 
 const DEBUG = true
 let  mimedb = newMimetypes()
@@ -20,8 +21,6 @@ type
     matrix: Matrix
   AsyncEventHandler* = object of EventHandlerBase
     matrix: AsyncMatrix
-
-
 
 type
   MatrixError = object of ValueError
@@ -174,8 +173,21 @@ proc roomResolve*(matrix: Matrix | AsyncMatrix, roomAlias: string): Future[RespR
 proc roomSend*(matrix: Matrix | AsyncMatrix, roomId: string, messageType: string, content: JsonNode): Future[RespRoomSend] {.multisync.} =
   let resp = await matrix.req(
     HttpPut,
-    fmt"/_matrix/client/r0/rooms/{roomId.encodeUrl()}/send/m.room.message/{randomId()}", $content)
+    fmt"/_matrix/client/r0/rooms/{roomId.encodeUrl()}/send/{messageType}/{randomId()}", $content)
   return (await resp.body).parseJson().to(RespRoomSend)
+
+proc roomSendImage*(matrix: Matrix | AsyncMatrix, roomId, url, filename: string): Future[RespRoomSend] {.multisync.} =
+  ## Sends an image to a room (can be a mxc)
+  let (_, _, ext) = filename.splitFile()
+  let content = %* {
+    "body": filename,
+    "msgtype": "m.image",
+    "url": url,
+    "mimetype": mimedb.getMimetype(ext),
+    "room_id": roomId,
+    "type": "m.room.message"
+  }
+  result = await matrix.roomSend(roomId, messageType = "m.room.message", content = content)
 
 proc toDownloadUri*(respUploadFile: RespUploadFile | string, scheme = "https", hostname = ""): string =
   ## If host == "", the host will be extracted from the content_uri
@@ -204,17 +216,17 @@ proc uploadFile*(matrix: Matrix | AsyncMatrix, filename, content, mimeType: stri
 
 proc uploadFile*(matrix: Matrix | AsyncMatrix, path: string): Future[RespUploadFile] {.multisync.} =
   if not fileExists(path): raise newException(OSError, "file does not exists:" & path)
-  let (dir, name, ext) = splitFile(path)
+  let (_, name, ext) = splitFile(path)
   let mimeType = mimedb.getMimetype(ext)
   when matrix is Matrix:
-    let content = readFile(path) # TODO async file
+    let content = readFile(path)
   else:
     let afh = openAsync(path, fmRead)
     let content = await afh.readAll()
   return await matrix.uploadFile(name & ext, content, mimeType)
 
 proc uploadFile*(matrix: Matrix | AsyncMatrix, fh: File | AsyncFile, filename, mimeType: string): Future[RespUploadFile] {.multisync.} =
-  let content = await fh.readAll() # TODO async file
+  let content = await fh.readAll()
   return await matrix.uploadFile(filename, content, mimeType)
 
 # proc downloadFile*(matrix: Matrix | AsyncMatrix, )

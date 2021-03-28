@@ -16,5 +16,5 @@ two modes of operandi:
 TODO
 -----
 
-[ ] uploadFile procs should stream the data
-[ ] encryption
+- [ ] uploadFile procs should stream the data
+- [ ] encryption

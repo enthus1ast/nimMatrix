@@ -1,6 +1,7 @@
-import httpclient, json, strformat, uri, strutils, oids, tables, asyncdispatch
+import httpclient, json, strformat, uri, strutils, oids, tables, asyncdispatch, mimetypes, os, asyncfile
 
-const DEBUG = false
+const DEBUG = true
+let  mimedb = newMimetypes()
 
 type
   MatrixBase = ref object of RootObj
@@ -10,10 +11,16 @@ type
     deviceId: string
     filterId: string
     resolvedRooms: Table[string, string]
-  Matrix = ref object of MatrixBase
-    http: HttpClient
-  AsyncMatrix = ref object of MatrixBase
-    http: AsyncHttpClient
+  Matrix* = ref object of MatrixBase ## The sync client
+    http*: HttpClient
+  AsyncMatrix* = ref object of MatrixBase ## The async client
+    http*: AsyncHttpClient
+  EventHandlerBase = object of RootObj
+  EventHandler* = object of EventHandlerBase
+    matrix: Matrix
+  AsyncEventHandler* = object of EventHandlerBase
+    matrix: AsyncMatrix
+
 
 
 type
@@ -51,16 +58,21 @@ type
     sender*: string
     content*: JsonNode
     origin_server_ts: int
+  RespUploadFile* = object
+    content_uri*: string
 
 proc randomId(): string =
   $genOid()
 
-proc req(matrix: Matrix | AsyncMatrix, httpMethod: HttpMethod, api, body: string | JsonNode ): Future[Response | AsyncResponse] {.multisync.} =
+proc req(matrix: Matrix | AsyncMatrix, httpMethod: HttpMethod, api, body: string | JsonNode, headers = newHttpHeaders()): Future[Response | AsyncResponse] {.multisync.} =
   matrix.http.headers = newHttpHeaders({
     "Content-Type": "application/json",
     "Authorization": fmt"Bearer {matrix.accessToken}",
     # "DeviceId": matrix.deviceId
   })
+  # Overwrite the default headers with supplied headers
+  for key, header in headers.pairs:
+    matrix.http.headers[key] = header
   let uri = matrix.server & api
   when DEBUG:
     echo "==============================================="
@@ -90,7 +102,7 @@ proc req(matrix: Matrix | AsyncMatrix, httpMethod: HttpMethod, api, body: string
     raise ex
 
 func identifiertToUsername*(str: string): string =
-  ## @sn0re:matrix.code0.xyz --> sn0re
+  ## @myUserName:matrix.code0.xyz --> myUserName
   if str.startsWith("@"):
     return str[1 .. ^1].split(":", 1)[0]
 
@@ -105,7 +117,6 @@ proc newAsyncMatrix*(server: string): AsyncMatrix =
   result.server = server
 
 proc login*(matrix: Matrix | AsyncMatrix, username, password: string): Future[RespLogin] {.multisync.} =
-  # echo "FOO"
   let respFut = matrix.req(HttpPost, "/_matrix/client/r0/login"):
     %* {
       "type": "m.login.password",
@@ -160,12 +171,53 @@ proc roomResolve*(matrix: Matrix | AsyncMatrix, roomAlias: string): Future[RespR
   let resp = await matrix.req(HttpGet, fmt"/_matrix/client/r0/directory/room/{roomAlias.encodeUrl()}", "")
   return (await resp.body).parseJson().to(RespRoomResolve)
 
-# proc roomSend(matrix: Matrix, roomId: string, messageType: string, content: openArray[(string, string)]) =
 proc roomSend*(matrix: Matrix | AsyncMatrix, roomId: string, messageType: string, content: JsonNode): Future[RespRoomSend] {.multisync.} =
   let resp = await matrix.req(
     HttpPut,
     fmt"/_matrix/client/r0/rooms/{roomId.encodeUrl()}/send/m.room.message/{randomId()}", $content)
   return (await resp.body).parseJson().to(RespRoomSend)
+
+proc toDownloadUri*(respUploadFile: RespUploadFile | string, scheme = "https", hostname = ""): string =
+  ## If host == "", the host will be extracted from the content_uri
+  when respUploadFile is string:
+    let url = parseUri(respUploadFile)
+  else:
+    let url = parseUri(respUploadFile.content_uri)
+  if url.scheme != "mxc": raise newException(ValueError, "unknown media id (only support mxc)")
+  var res: Uri
+  res.scheme = scheme
+  if hostname == "":
+    res.hostname = url.hostname
+  else:
+    res.hostname = hostname
+  res.path = fmt"/_matrix/media/r0/download/{url.hostname}{url.path}"
+  return $res
+
+proc uploadFile*(matrix: Matrix | AsyncMatrix, filename, content, mimeType: string): Future[RespUploadFile] {.multisync.} =
+  ## Uploads a file to the content repository.
+  ## This returns a content uri which can later be posted as a message.
+  ## TODO no uploadFile proc streams the data!
+  var headers = newHttpHeaders()
+  headers["Content-Type"] = mimeType
+  let resp = await matrix.req(HttpPost, fmt"/_matrix/media/r0/upload?filename={filename.encodeUrl()}", content, headers)
+  return (await resp.body).parseJson().to(RespUploadFile)
+
+proc uploadFile*(matrix: Matrix | AsyncMatrix, path: string): Future[RespUploadFile] {.multisync.} =
+  if not fileExists(path): raise newException(OSError, "file does not exists:" & path)
+  let (dir, name, ext) = splitFile(path)
+  let mimeType = mimedb.getMimetype(ext)
+  when matrix is Matrix:
+    let content = readFile(path) # TODO async file
+  else:
+    let afh = openAsync(path, fmRead)
+    let content = await afh.readAll()
+  return await matrix.uploadFile(name & ext, content, mimeType)
+
+proc uploadFile*(matrix: Matrix | AsyncMatrix, fh: File | AsyncFile, filename, mimeType: string): Future[RespUploadFile] {.multisync.} =
+  let content = await fh.readAll() # TODO async file
+  return await matrix.uploadFile(filename, content, mimeType)
+
+# proc downloadFile*(matrix: Matrix | AsyncMatrix, )
 
 ##############################################################################
 # Some (dummy) debugging procs, will be removed later
@@ -196,4 +248,4 @@ when isMainModule:
   import unittest
   suite "matrix":
     test "ident converter":
-      check identifiertToUsername("@sn0re:matrix.code0.xyz") == "sn0re"
+      check identifiertToUsername("@myUserName:matrix.code0.xyz") == "myUserName"

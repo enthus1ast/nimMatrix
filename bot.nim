@@ -27,6 +27,10 @@ when isMainModule:
   echo matrix.roomResolve(roomAlias)
   let roomId = matrix.roomResolve(roomAlias).room_id
 
+  let contentUri = matrix.uploadFile("testfile.txt", "CONTENT", "text/plain")
+  echo contentUri.toDownloadUri()
+
+
   while true:
     echo "."
     for event in matrix.events()["chunk"].getElems():
